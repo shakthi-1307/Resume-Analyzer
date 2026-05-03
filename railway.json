@@ -1,0 +1,15 @@
+{
+  "build": {
+    "builder": "dockerfile"
+  },
+  "deploy": {
+    "startCommand": "python -m app.main",
+    "numReplicas": 1,
+    "restartPolicy": "on_failure",
+    "restartPolicyMaxRetries": 3
+  },
+  "environmentVariables": {
+    "OLLAMA_HOST": "http://localhost:11434",
+    "PORT": "8000"
+  }
+}
