@@ -1,21 +1,15 @@
-import ollama
-from ollama import Client
-import signal
-import sys
+from groq import Groq
 import os
 
-# Use environment variable for Ollama host, default to localhost
-ollama_host = os.getenv('OLLAMA_HOST', 'http://127.0.0.1:11434')
-client = Client(host=ollama_host)
+# Initialize Groq client with API key from environment
+api_key = os.getenv('GROQ_API_KEY')
+if not api_key:
+    raise ValueError("GROQ_API_KEY environment variable not set. Please set your Groq API key.")
 
-class TimeoutError(Exception):
-    pass
+client = Groq(api_key=api_key)
 
-def timeout_handler(signum, frame):
-    raise TimeoutError("Analysis request timed out")
-
-def get_intelligent_analysis(resume_text, jd_text, timeout_seconds=240):
-    """Sends resume and JD to local LLM for deep analysis."""
+def get_intelligent_analysis(resume_text, jd_text):
+    """Sends resume and JD to Groq's LLM for deep analysis."""
     
     prompt = f"""
     You are an expert technical recruiter. Analyze the following Resume against the Job Description.
@@ -36,11 +30,20 @@ def get_intelligent_analysis(resume_text, jd_text, timeout_seconds=240):
     """
     
     try:
-        response = client.chat(model='qwen2.5:1.5b', messages=[
-            {'role': 'user', 'content': prompt},
-        ])
+        # Use Groq's fast inference with mixtral-8x7b model
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model="mixtral-8x7b-32768",  # Fast, powerful free model from Groq
+            temperature=0.7,
+            max_tokens=1024,
+        )
         
-        full_text = response['message']['content']
+        full_text = chat_completion.choices[0].message.content
         
         # Logic to split the score from the text for the UI
         if "MATCH SCORE:" in full_text:
@@ -52,11 +55,14 @@ def get_intelligent_analysis(resume_text, jd_text, timeout_seconds=240):
             analysis = full_text
 
         return score, analysis
-    except TimeoutError:
-        return "Timeout", "The AI analysis took too long. Please try again."
-    except ConnectionError:
-        return "Error", "Could not connect to Ollama. Make sure Ollama is running (ollama serve)"
+        
     except Exception as e:
         error_msg = str(e)
-        print(f"Ollama Error: {error_msg}")
-        return "Error", f"Analysis failed: {error_msg}"
+        print(f"Groq API Error: {error_msg}")
+        
+        if "api_key" in error_msg.lower():
+            return "Error", "Groq API key not configured. Contact administrator."
+        elif "rate_limit" in error_msg.lower():
+            return "Error", "Rate limit exceeded. Please try again in a moment."
+        else:
+            return "Error", f"Analysis failed: {error_msg}"
